@@ -1,0 +1,498 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────
+enum Role {
+  NASABAH
+  PETUGAS
+  SUPERVISOR
+  ADMIN
+  OWNER
+}
+
+enum StatusGadai {
+  MENUNGGU_VERIFIKASI
+  DITAKSIR
+  DISETUJUI
+  DITOLAK
+  REVISI
+  MENUNGGU_PEMBAYARAN
+  AKTIF
+  JATUH_TEMPO
+  DIPERPANJANG
+  LUNAS
+  LELANG
+}
+
+enum StatusPembayaran {
+  PENDING
+  SUCCESS
+  FAILED
+  EXPIRED
+}
+
+enum JenisPembayaran {
+  PELUNASAN
+  PERPANJANGAN
+  CICILAN
+  DENDA
+}
+
+enum StatusDokumen {
+  MENUNGGU
+  TERVERIFIKASI
+  DITOLAK
+}
+
+enum JenisNotifikasi {
+  REMINDER_JATUH_TEMPO
+  REMINDER_PEMBAYARAN
+  STATUS_GADAI
+  PEMBAYARAN_SUKSES
+  SISTEM
+  PROMO
+}
+
+// ─── USER & AUTH ──────────────────────────────────────────
+model User {
+  id           String    @id @default(cuid())
+  nama         String
+  nikHash      String    @unique
+  noHp         String    @unique
+  email        String?   @unique
+  passwordHash String?
+  role         Role      @default(NASABAH)
+  isActive     Boolean   @default(true)
+  isVerified   Boolean   @default(false)
+  avatar       String?
+  alamat       String?
+  kota         String?
+  provinsi     String?
+  kodePos      String?
+  tanggalLahir DateTime?
+  jenisKelamin String?
+  pekerjaan    String?
+  cabangId     String?
+  referralCode String?   @unique
+  referredById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  cabang        Cabang?        @relation(fields: [cabangId], references: [id])
+  referredBy    User?          @relation("Referral", fields: [referredById], references: [id])
+  referrals     User[]         @relation("Referral")
+  gadai         Gadai[]
+  pembayaran    Pembayaran[]
+  dokumen       DokumenUser[]
+  loginLogs     LoginLog[]
+  notifikasi    Notifikasi[]
+  refreshTokens RefreshToken[]
+  otpCodes      OtpCode[]
+  rekening      Rekening[]
+  feedback      Feedback[]
+  auditLogs     AuditLog[]
+  invoices      Invoice[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  device    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  noHp      String
+  otpHash   String
+  purpose   String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("otp_codes")
+}
+
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  device    String?
+  userAgent String?
+  status    String
+  createdAt DateTime @default(now())
+
+  @@map("login_logs")
+}
+
+model Rekening {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bank       String
+  noRekening String
+  atasNama   String
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("rekening")
+}
+
+// ─── CABANG ───────────────────────────────────────────────
+model Cabang {
+  id        String   @id @default(cuid())
+  nama      String
+  kode      String   @unique
+  alamat    String?
+  kota      String?
+  telepon   String?
+  email     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  gadai Gadai[]
+
+  @@map("cabang")
+}
+
+// ─── KATEGORI & BARANG ────────────────────────────────────
+model KategoriBarang {
+  id         String   @id @default(cuid())
+  nama       String   @unique
+  deskripsi  String?
+  persenMaks Float    @default(75)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  barang BarangGadai[]
+
+  @@map("kategori_barang")
+}
+
+model BarangGadai {
+  id            String         @id @default(cuid())
+  gadaiId       String         @unique
+  gadai         Gadai          @relation(fields: [gadaiId], references: [id], onDelete: Cascade)
+  kategoriId    String
+  kategori      KategoriBarang @relation(fields: [kategoriId], references: [id])
+  nama          String
+  merk          String?
+  model         String?
+  tahun         Int?
+  kondisi       String
+  deskripsi     String?
+  nilaiPasar    Float?
+  nilaiTaksiran Float
+  foto          FotoBarang[]
+  qrCode        String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  penilaian PenilaianBarang[]
+
+  @@map("barang_gadai")
+}
+
+model FotoBarang {
+  id        String      @id @default(cuid())
+  barangId  String
+  barang    BarangGadai @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  url       String
+  urutan    Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  @@map("foto_barang")
+}
+
+model PenilaianBarang {
+  id             String      @id @default(cuid())
+  barangId       String
+  barang         BarangGadai @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  petugasId      String
+  nilaiPasar     Float
+  nilaiTaksiran  Float
+  persenPinjaman Float
+  catatan        String?
+  createdAt      DateTime    @default(now())
+
+  @@map("penilaian_barang")
+}
+
+// ─── DOKUMEN USER ─────────────────────────────────────────
+model DokumenUser {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  gadaiId String?
+  gadai   Gadai?  @relation(fields: [gadaiId], references: [id], onDelete: Cascade)
+
+  jenis String
+  url   String
+
+  status  StatusDokumen @default(MENUNGGU)
+  catatan String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("dokumen_users")
+}
+
+// ─── GADAI ────────────────────────────────────────────────
+model Gadai {
+  id           String      @id @default(cuid())
+  nomorGadai   String      @unique
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  cabangId     String?
+  cabang       Cabang?     @relation(fields: [cabangId], references: [id])
+  petugasId    String?
+  supervisorId String?
+  status       StatusGadai @default(MENUNGGU_VERIFIKASI)
+
+  nilaiTaksiran  Float
+  jumlahPinjaman Float
+  bungaPerBulan  Float
+  tenor          Int
+  totalBunga     Float @default(0)
+  totalDenda     Float @default(0)
+  totalBayar     Float @default(0)
+  sisaTagihan    Float @default(0)
+  biayaAdmin     Float @default(0)
+
+  tanggalMasuk      DateTime  @default(now())
+  tanggalJatuhTempo DateTime?
+  tanggalLunas      DateTime?
+  tanggalDitebus    DateTime?
+
+  catatan           String?
+  catatanPetugas    String?
+  catatanSupervisor String?
+  eSignature        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  barang        BarangGadai?
+  pembayaran    Pembayaran[]
+  invoice       Invoice[]
+  denda         Denda[]
+  riwayatStatus RiwayatStatusGadai[]
+  notifikasi    Notifikasi[]
+  dokumen       DokumenUser[]
+
+  @@map("gadai")
+}
+
+model RiwayatStatusGadai {
+  id         String       @id @default(cuid())
+  gadaiId    String
+  gadai      Gadai        @relation(fields: [gadaiId], references: [id], onDelete: Cascade)
+  statusLama StatusGadai?
+  statusBaru StatusGadai
+  catatan    String?
+  changedBy  String?
+  createdAt  DateTime     @default(now())
+
+  @@map("riwayat_status_gadai")
+}
+
+// ─── DENDA ────────────────────────────────────────────────
+model Denda {
+  id            String    @id @default(cuid())
+  gadaiId       String
+  gadai         Gadai     @relation(fields: [gadaiId], references: [id])
+  jumlah        Float
+  hariTerlambat Int       @default(0)
+  persenDenda   Float     @default(0.1)
+  isPaid        Boolean   @default(false)
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("denda")
+}
+
+// ─── PEMBAYARAN ───────────────────────────────────────────
+model Pembayaran {
+  id               String           @id @default(cuid())
+  nomorPembayaran  String           @unique
+  gadaiId          String
+  gadai            Gadai            @relation(fields: [gadaiId], references: [id])
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  invoiceId        String?
+  invoice          Invoice?         @relation(fields: [invoiceId], references: [id])
+  jenis            JenisPembayaran
+  jumlah           Float
+  biayaAdmin       Float            @default(0)
+  totalBayar       Float
+  status           StatusPembayaran @default(PENDING)
+  metodePembayaran String?
+  snapToken        String?
+  paymentUrl       String?
+  midtransOrderId  String?          @unique
+  midtransResponse String?
+  vaNumber         String?
+  qrisUrl          String?
+  tenorBaru        Int?
+  keterangan       String?
+  paidAt           DateTime?
+  expiredAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@map("pembayaran")
+}
+
+// ─── INVOICE ──────────────────────────────────────────────
+model Invoice {
+  id           String   @id @default(cuid())
+  nomorInvoice String   @unique
+  gadaiId      String
+  gadai        Gadai    @relation(fields: [gadaiId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  jenis        String
+  subtotal     Float
+  biayaAdmin   Float    @default(0)
+  bunga        Float    @default(0)
+  denda        Float    @default(0)
+  total        Float
+  status       String   @default("UNPAID")
+  pdfUrl       String?
+  dikirimEmail Boolean  @default(false)
+  dikirimWa    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items      InvoiceItem[]
+  pembayaran Pembayaran[]
+
+  @@map("invoice")
+}
+
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  deskripsi String
+  jumlah    Float
+  qty       Int     @default(1)
+
+  @@map("invoice_items")
+}
+
+// ─── NOTIFIKASI ───────────────────────────────────────────
+model Notifikasi {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gadaiId   String?
+  gadai     Gadai?          @relation(fields: [gadaiId], references: [id])
+  judul     String
+  pesan     String
+  tipe      JenisNotifikasi @default(SISTEM)
+  isRead    Boolean         @default(false)
+  channel   String?
+  sentAt    DateTime?
+  createdAt DateTime        @default(now())
+
+  @@map("notifikasi")
+}
+
+// ─── PROMO & REFERRAL ─────────────────────────────────────
+model Promo {
+  id             String   @id @default(cuid())
+  nama           String
+  kode           String   @unique
+  deskripsi      String?
+  tipe           String // POTONGAN_BUNGA | CASHBACK | BIAYA_ADMIN_GRATIS
+  nilai          Float
+  minPinjaman    Float?
+  maxPenggunaan  Int?
+  totalDigunakan Int      @default(0)
+  berlakuDari    DateTime
+  berlakuHingga  DateTime
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@map("promo")
+}
+
+model Referral {
+  id            String   @id @default(cuid())
+  referrerId    String
+  referredId    String
+  status        String   @default("PENDING")
+  bonusReferrer Float    @default(0)
+  bonusReferred Float    @default(0)
+  isPaid        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@map("referral")
+}
+
+// ─── FEEDBACK ─────────────────────────────────────────────
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  gadaiId   String?
+  rating    Int
+  kategori  String?
+  pesan     String?
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("feedback")
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  aksi      String
+  modul     String
+  targetId  String?
+  detail    String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_log")
+}
+
+// ─── PENGATURAN SISTEM ────────────────────────────────────
+model PengaturanSistem {
+  id        String   @id @default(cuid())
+  kunci     String   @unique
+  nilai     String
+  deskripsi String?
+  grup      String   @default("UMUM")
+  updatedAt DateTime @updatedAt
+
+  @@map("pengaturan_sistem")
+}
